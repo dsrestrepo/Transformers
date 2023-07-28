@@ -1,0 +1,290 @@
+---
+title: "Natural Language Processing"
+author: "David Restrepo"
+output: html_document
+date: "2023-07-17"
+---
+
+Course Overview:
+
+This course provides an introduction to Natural Language Processing (NLP) specifically tailored for medical applications. The course aims to equip medical professionals with the fundamental concepts and techniques of NLP, along with practical coding examples using the R programming language. By the end of this course, students will gain the necessary knowledge and skills to leverage NLP for clinical text classification and analysis.
+
+Course Goals:
+
+1. To provide an understanding of the fundamental concepts and techniques in Natural Language Processing (NLP) for medical applications.
+2. To explore the unique challenges and opportunities of working with text data in the healthcare domain.
+3. To develop practical skills in text preprocessing, feature engineering, and building NLP models using R programming language.
+4. To introduce advanced NLP methods, such as BERT, and their application in clinical text classification.
+5. To foster awareness of ethical considerations and responsible AI practices in the context of NLP for medical applications.
+
+
+## Natural Language Processing
+
+Due to the nature of machine learning models, which primarily consist of mathematical operations and rules, they are primarily designed to process numerical values. However, there are instances where our data sources consist of text from clinical notes, abstracts of papers, social media data, and others. In such cases, how should we handle this type of data?
+
+In this case we will be using a medical abstracts dataset available at the following link: 
+
+https://github.com/sebischair/Medical-Abstracts-TC-Corpus/tree/main
+
+### 1. Install the packages
+```{r}
+#install.packages("tm")
+#install.packages("caret")
+#install.packages("randomForest")
+install.packages("wordVectors")
+
+library(tm)
+library(caret)
+library(dplyr)
+library(ggplot2)
+library(randomForest)
+library(wordVectors)
+```
+
+### 2. Read the files
+
+In this case we already have the dataset divided into training and evaluation, if it is not divided, the dataset can be divided in the same way as it was done in the previous workshops.
+
+```{r}
+# Read train and test data
+train_data <- read.csv("Data/medical_tc_train.csv", stringsAsFactors = FALSE)
+test_data <- read.csv("Data/medical_tc_test.csv", stringsAsFactors = FALSE)
+
+# Read label mapping data
+label_mapping <- read.csv("Data/medical_tc_labels.csv", stringsAsFactors = TRUE)
+
+# Train:
+print(head(train_data, 2))
+
+# Test:
+print(head(test_data, 2))
+
+# labels:
+print(head(label_mapping, 2))
+
+```
+
+```{r}
+# Left Join
+train_data <- left_join(label_mapping, train_data)
+test_data <- left_join(label_mapping, test_data)
+
+# Train:
+print(head(train_data, 2))
+
+# Test:
+print(head(test_data, 2))
+```
+To make the problem simpler and faster to compile we are going to use a subset of the original datasets:
+
+```{r}
+TRAIN_SUBSET = 1000
+TEST_SUBSET = 200
+
+# Get a random subset of the train dataframe
+train_data <- train_data[sample(nrow(train_data), size = TRAIN_SUBSET), ]
+# Get a random subset of the test dataframe
+test_data <- test_data[sample(nrow(test_data), size = TEST_SUBSET), ]
+```
+
+
+```{r}
+# Create the histogram using ggplot2
+ggplot(train_data, aes(x = condition_name)) +
+  geom_bar(fill = "skyblue", color = "black") +
+  labs(title = "Distribution of Labels",
+       x = "label",
+       y = "instances") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+### 3. Preprocessing
+
+#### 3.1 Balance tha dataset
+```{r}
+# Check the current distribution of categories
+print('Initial distribution: ')
+table(train_data$condition_name)
+
+# Identify the category with the fewest instances
+min_instances <- min(table(train_data$condition_name))
+
+# Oversample the dataframe to balance the categories
+train_data <- train_data %>%
+  group_by(condition_name) %>%
+  sample_n(size = min_instances, replace = TRUE) %>%
+  ungroup()
+
+# Check the balanced distribution of categories
+print('Final distribution: ')
+table(train_data$condition_name)
+
+# Create the histogram using ggplot2
+ggplot(train_data, aes(x = condition_name)) +
+  geom_bar(fill = "skyblue", color = "black") +
+  labs(title = "Distribution of Labels After Undersampling",
+       x = "label",
+       y = "instances") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+```
+
+#### 3.2 Text Preprocessing
+
+Because text data is data that may contain a lot of noise and is very sparse, the preprocessing stage is very important. For the preprocessing we will follow the following steps:
+
+1. Text Cleaning:
+
+- Remove any irrelevant characters, punctuation marks, symbols, and numbers that don't contribute to the meaning of the text.
+- Convert text to lowercase (e.g., "The" to "the").
+- Handle contractions (e.g., "won't" to "will not" "can't" to "cannot").
+
+2. Tokenization:
+
+- Split the text into individual words or tokens. This is essential for further analysis and processing.
+- Tokenization can be as simple as using whitespace as a delimiter or more advanced methods like Word Tokenization or Subword Tokenization (e.g., using BERT's WordPiece tokenizer).
+
+3. Stopword Removal:
+
+- Remove common words (stopwords) like "the," "is," "and," etc.
+
+4. Stemming and Lemmatization:
+
+- Stemming reduces words to their base form (e.g., "running" to "run").
+- Lemmatization transforms words to their canonical form or lemma (e.g., "better" to "good").
+
+In order to avoid data leaks we will do the preprocessing first on the training data and then on the test data.
+
+Let's create a function for the preprocessing:
+```{r}
+preprocess_corpus <- function(corpus) {
+  # Convert text to lowercase
+  corpus <- tm_map(corpus, content_transformer(tolower))
+  # Remove punctuation
+  corpus <- tm_map(corpus, removePunctuation)
+  # Remove stopwords
+  corpus <- tm_map(corpus, removeWords, stopwords("english"))
+  # Stemming the texts
+  corpus <- tm_map(corpus, stemDocument)
+  
+  return(corpus)
+}
+```
+
+```{r}
+# Step 1: Preprocessing for train data:
+# Get the Corpus of texts
+train_corpus <- Corpus(VectorSource(train_data$medical_abstract))
+# Preprocessing the Corpus
+train_corpus <- preprocess_corpus(train_corpus)
+# Create a text file to save the preprocessed corpus for Word2Vec
+writeCorpus(train_corpus, file = "train_corpus.txt")
+```
+
+Now for the preprocessing of the test dataset, we will use only the documents whose words are also present in the training set:
+
+```{r}
+# Step 2: Preprocessing for test data (same as before, but filter words using the train DTM)
+test_corpus <- Corpus(VectorSource(test_data$medical_abstract))
+# Preprocessing the Corpus
+test_corpus <- preprocess_corpus(test_corpus)
+writeCorpus(test_corpus, file = "test_corpus.txt")
+```
+### 4. Encoding
+
+One way to improve the one-hot encoding algorithm and give more context is to use the term frequency of the word in the document. this instead of using 1 or 0 allows us to give a weight to the word depending on the number of appearances in the document
+
+```{r}
+train_dtm <- DocumentTermMatrix(train_corpus)
+train_matrix <- as.matrix(train_dtm)
+
+# Filter the test DTM based on the vocabulary in the train DTM
+test_dtm <- DocumentTermMatrix(test_corpus, control = list(dictionary = Terms(train_dtm)))
+test_matrix <- as.matrix(test_dtm)
+```
+
+### 5. Modeling
+
+Let's test the performance on a random forest model:
+
+```{r}
+
+# Train the Random Forest model
+rf_model <- randomForest(train_matrix, train_data$condition_name, ntree = 20)
+
+# Make predictions on the test data
+rf_predictions <- predict(rf_model, test_matrix)
+
+# Evaluate the model
+confusionMatrix(rf_predictions, test_data$condition_name)
+```
+
+### 6. Text Embeddings
+
+other methods to represent words in a more efficient and intelligent way allowing to preserve the relationship between words
+
+```{r}
+# Step 1: Load libraries and read CSV files
+library(tm)
+library(textclean)
+library(word2vec)
+library(stringr)
+
+train_data <- read.csv("Data/medical_tc_train.csv")
+test_data <- read.csv("Data/medical_tc_test.csv")
+label_data <- read.csv("Data/medical_tc_labels.csv")
+
+# Step 2: Data cleaning and preprocessing
+clean_text <- function(text) {
+  text <- tolower(text)  # Convert text to lowercase
+  text <- replace_abbreviations(text)  # Replace common abbreviations
+  text <- replace_contraction(text)  # Replace contractions (e.g., "can't" -> "cannot")
+  text <- removeNumbers(text)  # Remove numbers
+  text <- removePunctuation(text)  # Remove punctuation
+  text <- removeWords(text, stopwords("english"))  # Remove stop words
+  text <- stripWhitespace(text)  # Remove extra white spaces
+  return(text)
+}
+
+# Function to replace common abbreviations
+replace_abbreviations <- function(text) {
+  text <- gsub("\\bdr\\b", "doctor", text)
+  # Add more abbreviations if needed
+  return(text)
+}
+
+# Function to replace contractions
+replace_contraction <- function(text) {
+  text <- gsub("\\bcan't\\b", "cannot", text)
+  # Add more contractions if needed
+  return(text)
+}
+
+# Apply data cleaning to the medical abstracts
+train_data$cleaned_abstract <- sapply(train_data$medical_abstract, clean_text)
+test_data$cleaned_abstract <- sapply(test_data$medical_abstract, clean_text)
+
+# Step 3: Load or train Word2Vec model
+# To load a pre-trained Word2Vec model, use:
+# model <- loadModel("path_to_pretrained_model.bin")
+
+# To train a new Word2Vec model, use:
+# model <- trainWord2Vec(train_data$cleaned_abstract, vectorSize = 100, window = 5, minCount = 5)
+
+# Step 4: Generate word embeddings
+train_embeddings <- textEmbed(train_data$cleaned_abstract, model)
+test_embeddings <- textEmbed(test_data$cleaned_abstract, model)
+
+# Step 5: Split data into train and test sets
+train_labels <- train_data$condition_label
+test_labels <- test_data$condition_label
+
+# Step 6: Save preprocessed data and embeddings
+write.csv(train_embeddings, "train_embeddings.csv", row.names = FALSE)
+write.csv(test_embeddings, "test_embeddings.csv", row.names = FALSE)
+write.csv(train_labels, "train_labels.csv", row.names = FALSE)
+write.csv(test_labels, "test_labels.csv", row.names = FALSE)
+
+```
