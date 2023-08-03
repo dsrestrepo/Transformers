@@ -31,14 +31,12 @@ https://github.com/sebischair/Medical-Abstracts-TC-Corpus/tree/main
 #install.packages("tm")
 #install.packages("caret")
 #install.packages("randomForest")
-install.packages("wordVectors")
 
 library(tm)
 library(caret)
 library(dplyr)
 library(ggplot2)
 library(randomForest)
-library(wordVectors)
 ```
 
 ### 2. Read the files
@@ -179,8 +177,6 @@ preprocess_corpus <- function(corpus) {
 train_corpus <- Corpus(VectorSource(train_data$medical_abstract))
 # Preprocessing the Corpus
 train_corpus <- preprocess_corpus(train_corpus)
-# Create a text file to save the preprocessed corpus for Word2Vec
-writeCorpus(train_corpus, file = "train_corpus.txt")
 ```
 
 Now for the preprocessing of the test dataset, we will use only the documents whose words are also present in the training set:
@@ -190,7 +186,6 @@ Now for the preprocessing of the test dataset, we will use only the documents wh
 test_corpus <- Corpus(VectorSource(test_data$medical_abstract))
 # Preprocessing the Corpus
 test_corpus <- preprocess_corpus(test_corpus)
-writeCorpus(test_corpus, file = "test_corpus.txt")
 ```
 ### 4. Encoding
 
@@ -219,72 +214,4 @@ rf_predictions <- predict(rf_model, test_matrix)
 
 # Evaluate the model
 confusionMatrix(rf_predictions, test_data$condition_name)
-```
-
-### 6. Text Embeddings
-
-other methods to represent words in a more efficient and intelligent way allowing to preserve the relationship between words
-
-```{r}
-# Step 1: Load libraries and read CSV files
-library(tm)
-library(textclean)
-library(word2vec)
-library(stringr)
-
-train_data <- read.csv("Data/medical_tc_train.csv")
-test_data <- read.csv("Data/medical_tc_test.csv")
-label_data <- read.csv("Data/medical_tc_labels.csv")
-
-# Step 2: Data cleaning and preprocessing
-clean_text <- function(text) {
-  text <- tolower(text)  # Convert text to lowercase
-  text <- replace_abbreviations(text)  # Replace common abbreviations
-  text <- replace_contraction(text)  # Replace contractions (e.g., "can't" -> "cannot")
-  text <- removeNumbers(text)  # Remove numbers
-  text <- removePunctuation(text)  # Remove punctuation
-  text <- removeWords(text, stopwords("english"))  # Remove stop words
-  text <- stripWhitespace(text)  # Remove extra white spaces
-  return(text)
-}
-
-# Function to replace common abbreviations
-replace_abbreviations <- function(text) {
-  text <- gsub("\\bdr\\b", "doctor", text)
-  # Add more abbreviations if needed
-  return(text)
-}
-
-# Function to replace contractions
-replace_contraction <- function(text) {
-  text <- gsub("\\bcan't\\b", "cannot", text)
-  # Add more contractions if needed
-  return(text)
-}
-
-# Apply data cleaning to the medical abstracts
-train_data$cleaned_abstract <- sapply(train_data$medical_abstract, clean_text)
-test_data$cleaned_abstract <- sapply(test_data$medical_abstract, clean_text)
-
-# Step 3: Load or train Word2Vec model
-# To load a pre-trained Word2Vec model, use:
-# model <- loadModel("path_to_pretrained_model.bin")
-
-# To train a new Word2Vec model, use:
-# model <- trainWord2Vec(train_data$cleaned_abstract, vectorSize = 100, window = 5, minCount = 5)
-
-# Step 4: Generate word embeddings
-train_embeddings <- textEmbed(train_data$cleaned_abstract, model)
-test_embeddings <- textEmbed(test_data$cleaned_abstract, model)
-
-# Step 5: Split data into train and test sets
-train_labels <- train_data$condition_label
-test_labels <- test_data$condition_label
-
-# Step 6: Save preprocessed data and embeddings
-write.csv(train_embeddings, "train_embeddings.csv", row.names = FALSE)
-write.csv(test_embeddings, "test_embeddings.csv", row.names = FALSE)
-write.csv(train_labels, "train_labels.csv", row.names = FALSE)
-write.csv(test_labels, "test_labels.csv", row.names = FALSE)
-
 ```
