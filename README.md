@@ -28,9 +28,9 @@ To get started with the examples in this repository, you need to have R and Pyth
    - Install RStudio (optional but recommended): RStudio is a powerful integrated development environment (IDE) for R. You can download it from [RStudio Website](https://www.rstudio.com/).
 
 2. **Python Environment Setup**
-   - Install Python: You can download and install Python from the official website: [Python Website](https://www.python.org/). We recommend using Python 3.x.
+   - Install Python: You can download and install Python from the official website: [Python Website](https://www.python.org/). We recommend using Python 3.9.13.
    - Create a virtual environment: After installing Python, create a virtual environment to manage dependencies for the notebooks. You can use `venv` or `conda` to create a virtual environment.
-   - Install required Python packages: Navigate to the Python notebooks directory and install the required packages using `pip`
+   - Install required Python packages: Navigate to the Python notebooks directory and install the required packages using `pip install -r requirements.txt`
 
 ## How to Use This Repository
 
